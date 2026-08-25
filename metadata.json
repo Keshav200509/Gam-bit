@@ -1,0 +1,6 @@
+{
+  "name": "Gambit",
+  "description": "A 2D turn-based strategy game for Android featuring calculated risk, intel hints, scouting, and locks on a 5x5 grid.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

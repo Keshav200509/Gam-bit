@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Gambit</string>
+    <string name="vibrator_attribution_label">Haptic Feedback</string>
+</resources>

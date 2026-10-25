@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-main: #0A0B10;
+    --surface: #12131A;
+    --border: #1E2030;
+    --text-primary: #C8D0E0;
+    --text-muted: #4A5068;
+    --player-teal: #2DD4BF;
+    --ai-crimson: #EF4444;
+    --gold-accent: #F59E0B;
+    --intel-purple: #A78BFA;
+  }
+
+  body {
+    background-color: #0A0B10;
+    color: #C8D0E0;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  .font-mono-code {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Animations */
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.02); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 15px rgba(45, 212, 191, 0.4); }
+  50% { box-shadow: 0 0 25px rgba(45, 212, 191, 0.7); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 2.5s ease-in-out infinite;
+}

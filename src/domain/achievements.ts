@@ -1,4 +1,10 @@
-import { AchievementItem, UserStats } from '../types/game';
+import { AchievementItem, ArenaId, GameLevelId, UserStats } from '../types/game';
+
+const ARENAS: ArenaId[] = ['ASCENDENCY', 'CONFRONTATION', 'OBLIVION'];
+const LEVELS: GameLevelId[] = ['LEVEL_1', 'LEVEL_2', 'LEVEL_3'];
+
+/** Key used to record a won arena/level configuration in `UserStats.configurationsWon`. */
+export const configKey = (arena: string, level: string): string => `${arena}:${level}`;
 
 export const ALL_ACHIEVEMENTS: Omit<AchievementItem, 'unlocked' | 'unlockedAt'>[] = [
   { id: 'first_win', title: 'First Win', description: 'Win your first game' },
@@ -15,6 +21,13 @@ export const ALL_ACHIEVEMENTS: Omit<AchievementItem, 'unlocked' | 'unlockedAt'>[
   { id: 'arena_master', title: 'Arena Master', description: 'Win level 3 of all 3 arenas' }
 ];
 
+/**
+ * Evaluates achievements against `stats`.
+ *
+ * NOTE: callers are expected to have ALREADY applied the completed game to `stats`
+ * (totalGames, totalWins, bothLocksWinCount, comebackKidCount, configurationsWon)
+ * before calling this function, so thresholds are compared directly without `+ 1`.
+ */
 export function checkAchievements(
   stats: UserStats,
   completedGame?: {
@@ -43,11 +56,11 @@ export function checkAchievements(
 
     if (isWin) {
       check('first_win', true);
-      check('strategist', stats.totalWins + 1 >= 10);
+      check('strategist', stats.totalWins >= 10);
       check('perfectionist', margin >= 50);
       check('comeback_kid', completedGame.wasBehindAtRound8);
       check('speed_demon', completedGame.durationMs < 6 * 60 * 1000);
-      check('lock_master', completedGame.usedBothLocksEveryRound && stats.bothLocksWinCount + 1 >= 5);
+      check('lock_master', stats.bothLocksWinCount >= 5);
     }
   }
 
@@ -55,6 +68,10 @@ export function checkAchievements(
   check('scout_master', stats.scoutEffectiveCount >= 10);
   check('intel_analyst', stats.intelAnalystCount >= 5);
   check('bluff_caller', stats.bluffCallerCount >= 3);
+
+  const won = new Set(stats.configurationsWon ?? []);
+  check('champion', ARENAS.every(a => LEVELS.every(l => won.has(configKey(a, l)))));
+  check('arena_master', ARENAS.every(a => won.has(configKey(a, 'LEVEL_3'))));
 
   return newlyUnlocked;
 }

@@ -52,7 +52,8 @@ export const DEFAULT_PROFILE: UserProfile = {
     bothLocksWinCount: 0,
     comebackKidCount: 0,
     pvpRating: 1000,
-    unlockedAchievementIds: []
+    unlockedAchievementIds: [],
+    configurationsWon: []
   },
   arenaProgress: {
     ASCENDENCY: 3,

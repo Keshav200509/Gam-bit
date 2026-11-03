@@ -26,7 +26,7 @@ import {
   saveStoredProfile,
   getStoredSettings
 } from '../services/storage';
-import { checkAchievements } from '../domain/achievements';
+import { checkAchievements, configKey } from '../domain/achievements';
 import { StatusBar } from '../components/StatusBar';
 import { RoundProgressDots } from '../components/RoundProgressDots';
 import { LateGameEventBanner } from '../components/LateGameEventBanner';
@@ -502,6 +502,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       if (isWin) {
         profile.stats.totalWins += 1;
         profile.stats.pvpRating += 25;
+        if (usedBothLocksEveryRound) profile.stats.bothLocksWinCount += 1;
+        if (wasBehindAtRound8) profile.stats.comebackKidCount += 1;
+        profile.stats.configurationsWon = [
+          ...new Set([...(profile.stats.configurationsWon ?? []), configKey(arena, level)])
+        ];
       } else {
         profile.stats.pvpRating = Math.max(800, profile.stats.pvpRating - 15);
       }
@@ -544,6 +549,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     setScoutUsesCount(0);
     setLockUsesCount(0);
     setClashResults({});
+    setWasBehindAtRound8(false);
+    setUsedBothLocksEveryRound(true);
   };
 
   // If game is over, render ResultScreen

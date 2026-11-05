@@ -16,3 +16,9 @@
 local.properties
 .env
 debug.keystore
+
+# Node / Vite
+node_modules/
+dist/
+*.tsbuildinfo
+*.log

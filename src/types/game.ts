@@ -184,6 +184,8 @@ export interface UserStats {
   pvpRating: number;
   lastDailyChallengeDate?: string;
   unlockedAchievementIds: string[];
+  /** Won configurations as "ARENA:LEVEL" keys (e.g. "OBLIVION:LEVEL_3"). Optional for backward compatibility with older saves. */
+  configurationsWon?: string[];
 }
 
 export interface UserProfile {

@@ -110,7 +110,7 @@ export function generateIntel(
         isTrue,
         reliabilityLabel,
         type: 'CELL_VALUE',
-        actualData: { region: 'center', cellValue: 3 }
+        actualData: {}
       };
     }
   }

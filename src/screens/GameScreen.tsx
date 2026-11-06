@@ -92,9 +92,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [showIncomeSummary, setShowIncomeSummary] = useState<boolean>(false);
 
   // Initialised synchronously so the auto-save effect cannot overwrite the save before the dialog shows.
-  const [showResumeDialog, setShowResumeDialog] = useState<boolean>(
-    () => !isDailyChallenge && !!getStoredSave()
-  );
+  const [pendingSave] = useState(() => (isDailyChallenge ? null : getStoredSave()));
+  const [showResumeDialog, setShowResumeDialog] = useState<boolean>(() => !!pendingSave);
   const [timeRemaining, setTimeRemaining] = useState<number>(60);
   const [timerActive, setTimerActive] = useState<boolean>(false);
 
@@ -589,9 +588,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       {/* Resume Dialog */}
       {showResumeDialog && (
         <ResumeDialog
-          roundNumber={roundState.roundNumber}
-          arena={arena}
-          level={level}
+          roundNumber={pendingSave?.roundState.roundNumber ?? roundState.roundNumber}
+          arena={pendingSave?.arena ?? arena}
+          level={pendingSave?.level ?? level}
           onResume={handleResumeGame}
           onDiscard={handleDiscardSave}
         />

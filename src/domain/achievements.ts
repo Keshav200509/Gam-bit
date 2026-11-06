@@ -12,7 +12,7 @@ export const ALL_ACHIEVEMENTS: Omit<AchievementItem, 'unlocked' | 'unlockedAt'>[
   { id: 'perfectionist', title: 'Perfectionist', description: 'Win a game by 50+ points' },
   { id: 'comeback_kid', title: 'Comeback Kid', description: 'Win after being behind by 20+ points at round 8' },
   { id: 'scout_master', title: 'Scout Master', description: 'Use scout effectively 10 times (scouted clear -> claimed uncontested)' },
-  { id: 'lock_master', title: 'Lock Master', description: 'Win 5 games using both locks every game' },
+  { id: 'lock_master', title: 'Lock Master', description: 'Win 5 games using every available lock each round' },
   { id: 'intel_analyst', title: 'Intel Analyst', description: 'Trust intel correctly 5 times (acted on accurate intel, won the clash)' },
   { id: 'bluff_caller', title: 'Bluff Caller', description: 'Correctly identify a bluff intel 3 times (acted against intel, won)' },
   { id: 'speed_demon', title: 'Speed Demon', description: 'Win a game in under 6 minutes' },

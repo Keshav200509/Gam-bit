@@ -26,7 +26,12 @@ import {
   saveStoredProfile,
   getStoredSettings
 } from '../services/storage';
-import { checkAchievements, configKey } from '../domain/achievements';
+import { checkAchievements } from '../domain/achievements';
+import {
+  applyGameToStats,
+  applyRoundToProgress,
+  createAchievementProgress
+} from '../domain/achievementTracking';
 import { StatusBar } from '../components/StatusBar';
 import { RoundProgressDots } from '../components/RoundProgressDots';
 import { LateGameEventBanner } from '../components/LateGameEventBanner';
@@ -90,9 +95,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [timeRemaining, setTimeRemaining] = useState<number>(60);
   const [timerActive, setTimerActive] = useState<boolean>(false);
 
-  const [gameStartTime] = useState<number>(Date.now());
-  const [wasBehindAtRound8, setWasBehindAtRound8] = useState<boolean>(false);
-  const [usedBothLocksEveryRound, setUsedBothLocksEveryRound] = useState<boolean>(true);
+  const [achievementProgress, setAchievementProgress] = useState(() => createAchievementProgress());
 
   // Stats trackers
   const [clashesWonCount, setClashesWonCount] = useState<number>(0);
@@ -129,8 +132,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       setTimeRemaining(prev => {
         if (prev <= 1) {
           clearInterval(interval);
-          soundManager.playTimerExpired();
-          handleCommit(true);
           return 0;
         }
         if (prev === 11) {
@@ -155,12 +156,13 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         level,
         isDailyChallenge,
         dailyChallengeSeed,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        achievementProgress
       });
     } else if (roundState.phase === 'GameOver') {
       clearActiveGame();
     }
-  }, [roundState, playerScore, aiScore, arena, level, isDailyChallenge, dailyChallengeSeed, showResumeDialog]);
+  }, [roundState, playerScore, aiScore, arena, level, isDailyChallenge, dailyChallengeSeed, showResumeDialog, achievementProgress]);
 
   // Handle Resume Game
   const handleResumeGame = () => {
@@ -170,6 +172,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       setRoundState(saved.roundState);
       setPlayerScore(saved.score.playerScore);
       setAiScore(saved.score.aiScore);
+      // Older saves did not record per-round lock usage, so they cannot count toward Lock Master.
+      setAchievementProgress(
+        saved.achievementProgress ?? { ...createAchievementProgress(), usedAllLocksEveryRound: false }
+      );
     }
     setShowResumeDialog(false);
   };
@@ -180,6 +186,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     setRoundState(engine.roundState);
     setPlayerScore(0);
     setAiScore(0);
+    setAchievementProgress(createAchievementProgress());
     setShowResumeDialog(false);
   };
 
@@ -324,11 +331,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       const keys = Object.keys(roundState.playerPlacements);
       if (!isAutoCommit && keys.length === 0) return;
 
-      // Track lock usage for achievement
-      if (roundState.playerLocks.length < 2) {
-        setUsedBothLocksEveryRound(false);
-      }
-
       // Step 1: Commit player placements
       let committedState = engine.commitPlayerPlacements(
         roundState.playerPlacements,
@@ -451,13 +453,33 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       setAiIncomeDelta(aiIncome);
       setShowIncomeSummary(true);
 
-      // Check for Comeback Kid condition at round 8
-      if (committedState.roundNumber === 8 && engine.score.aiScore - engine.score.playerScore >= 20) {
-        setWasBehindAtRound8(true);
-      }
+      setAchievementProgress(prev =>
+        applyRoundToProgress(prev, {
+          config,
+          roundNumber: committedState.roundNumber,
+          playerPlacements: committedState.playerPlacements,
+          aiPlacements: committedState.aiPlacements,
+          playerLocks: committedState.playerLocks,
+          results: resultsMap,
+          intel: committedState.intel,
+          scoutedPosition: committedState.scoutedPosition,
+          scoutResult: committedState.scoutResult,
+          playerScore: engine.score.playerScore,
+          aiScore: engine.score.aiScore
+        })
+      );
     },
     [roundState, engine, config]
   );
+
+  // Auto-commit when the round timer expires. Runs after render so it commits the latest placements.
+  useEffect(() => {
+    if (timerActive && timeRemaining === 0 && roundState.phase === 'Placing') {
+      setTimerActive(false);
+      soundManager.playTimerExpired();
+      handleCommit(true);
+    }
+  }, [timerActive, timeRemaining, roundState.phase, handleCommit]);
 
   // Continue to next round from Income Summary
   const handleContinueAfterIncome = () => {
@@ -478,7 +500,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       haptics.gameOver();
 
       // Record Game History & Update Profile Stats
-      const durationMs = Date.now() - gameStartTime;
+      const durationMs = Date.now() - achievementProgress.startedAt;
       const historyEntry = {
         id: 'gm_' + Date.now(),
         date: new Date().toLocaleDateString(),
@@ -498,28 +520,22 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       addStoredHistory(historyEntry);
 
       const profile = getStoredProfile();
-      profile.stats.totalGames += 1;
-      if (isWin) {
-        profile.stats.totalWins += 1;
-        profile.stats.pvpRating += 25;
-        if (usedBothLocksEveryRound) profile.stats.bothLocksWinCount += 1;
-        if (wasBehindAtRound8) profile.stats.comebackKidCount += 1;
-        profile.stats.configurationsWon = [
-          ...new Set([...(profile.stats.configurationsWon ?? []), configKey(arena, level)])
-        ];
-      } else {
-        profile.stats.pvpRating = Math.max(800, profile.stats.pvpRating - 15);
-      }
-      profile.stats.clashesWon += clashesWonCount;
-      profile.stats.clashesLost += clashesLostCount;
-      profile.stats.scoutEffectiveCount += scoutUsesCount;
+      profile.stats = applyGameToStats(profile.stats, {
+        isWin,
+        arena,
+        level,
+        isDailyChallenge,
+        clashesWon: clashesWonCount,
+        clashesLost: clashesLostCount,
+        progress: achievementProgress
+      });
 
       const newAchievements = checkAchievements(profile.stats, {
         playerScore: engine.score.playerScore,
         aiScore: engine.score.aiScore,
         durationMs,
-        wasBehindAtRound8,
-        usedBothLocksEveryRound,
+        wasBehindAtRound8: achievementProgress.wasBehindAtRound8,
+        usedBothLocksEveryRound: achievementProgress.usedAllLocksEveryRound,
         arena,
         level
       });
@@ -549,8 +565,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     setScoutUsesCount(0);
     setLockUsesCount(0);
     setClashResults({});
-    setWasBehindAtRound8(false);
-    setUsedBothLocksEveryRound(true);
+    setAchievementProgress(createAchievementProgress());
   };
 
   // If game is over, render ResultScreen

@@ -5,7 +5,8 @@ import {
   Score,
   UserProfile,
   ArenaId,
-  GameLevelId
+  GameLevelId,
+  GameAchievementProgress
 } from '../types/game';
 
 const PROFILE_KEY = 'gambit_user_profile';
@@ -23,6 +24,8 @@ export interface SavedGameData {
   isDailyChallenge: boolean;
   dailyChallengeSeed: number;
   timestamp: number;
+  /** Missing in saves created before achievement tracking was persisted. */
+  achievementProgress?: GameAchievementProgress;
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -78,14 +81,26 @@ export function setStoredOnboardingCompleted(completed: boolean): void {
   }
 }
 
+// Always returns a fresh object so callers can mutate it without corrupting DEFAULT_PROFILE.
 export function getStoredProfile(): UserProfile {
+  let stored: Partial<UserProfile> = {};
   try {
     const raw = localStorage.getItem(PROFILE_KEY);
-    if (!raw) return DEFAULT_PROFILE;
-    return { ...DEFAULT_PROFILE, ...JSON.parse(raw) };
+    if (raw) stored = JSON.parse(raw);
   } catch {
-    return DEFAULT_PROFILE;
+    // Fall back to defaults
   }
+  return {
+    ...DEFAULT_PROFILE,
+    ...stored,
+    stats: {
+      ...DEFAULT_PROFILE.stats,
+      ...stored.stats,
+      unlockedAchievementIds: [...(stored.stats?.unlockedAchievementIds ?? [])],
+      configurationsWon: [...(stored.stats?.configurationsWon ?? [])]
+    },
+    arenaProgress: { ...DEFAULT_PROFILE.arenaProgress, ...stored.arenaProgress }
+  };
 }
 
 export function saveStoredProfile(profile: UserProfile): void {

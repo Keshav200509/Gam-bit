@@ -188,6 +188,16 @@ export interface UserStats {
   configurationsWon?: string[];
 }
 
+/** Per-game achievement tracking, accumulated round by round and saved with the active game. */
+export interface GameAchievementProgress {
+  startedAt: number;
+  wasBehindAtRound8: boolean;
+  usedAllLocksEveryRound: boolean;
+  effectiveScouts: number;
+  intelTrusted: number;
+  bluffsCalled: number;
+}
+
 export interface UserProfile {
   uid: string;
   displayName: string;

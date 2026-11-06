@@ -91,7 +91,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [aiIncomeDelta, setAiIncomeDelta] = useState<number>(0);
   const [showIncomeSummary, setShowIncomeSummary] = useState<boolean>(false);
 
-  const [showResumeDialog, setShowResumeDialog] = useState<boolean>(false);
+  // Initialised synchronously so the auto-save effect cannot overwrite the save before the dialog shows.
+  const [showResumeDialog, setShowResumeDialog] = useState<boolean>(
+    () => !isDailyChallenge && !!getStoredSave()
+  );
   const [timeRemaining, setTimeRemaining] = useState<number>(60);
   const [timerActive, setTimerActive] = useState<boolean>(false);
 
@@ -102,14 +105,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [clashesLostCount, setClashesLostCount] = useState<number>(0);
   const [scoutUsesCount, setScoutUsesCount] = useState<number>(0);
   const [lockUsesCount, setLockUsesCount] = useState<number>(0);
-
-  // Check saved game on mount
-  useEffect(() => {
-    const saved = getStoredSave();
-    if (saved && !isDailyChallenge) {
-      setShowResumeDialog(true);
-    }
-  }, [isDailyChallenge]);
 
   // Sync sounds & haptics with settings
   useEffect(() => {

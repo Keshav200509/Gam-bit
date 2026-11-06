@@ -192,8 +192,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
     // 1. Scout Mode
     if (scoutMode) {
-      const updated = engine.applyScout(pos);
-      setRoundState(updated);
+      // The engine doesn't hold in-progress placements/locks, so merge only the scout fields.
+      const { scoutUsed, scoutedPosition, scoutResult } = engine.applyScout(pos);
+      setRoundState({ ...roundState, scoutUsed, scoutedPosition, scoutResult });
       setScoutMode(false);
       setScoutUsesCount(prev => prev + 1);
       soundManager.playScout();

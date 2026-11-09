@@ -4,13 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 3000",
-    "build": "vite build",
-    "preview": "vite preview --port 3000",
-    "lint": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
+  "dev": "vite",
+  "build": "vite build",
+  "preview": "vite preview"
+}
   "dependencies": {
     "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",

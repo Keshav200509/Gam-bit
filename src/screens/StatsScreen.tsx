@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Trophy, BarChart3, History, Award, CheckCircle2, Lock, Trash2 } from 'lucide-react';
 import { AnimatedBackground } from '../components/AnimatedBackground';
-import { getStoredHistory, getStoredProfile, clearStoredHistory } from '../services/storage';
+import { getStoredHistory, clearStoredHistory, storage } from '../services/storage';
 import { ALL_ACHIEVEMENTS } from '../domain/achievements';
 import { soundManager } from '../services/soundManager';
 
@@ -12,16 +12,16 @@ interface StatsScreenProps {
 export const StatsScreen: React.FC<StatsScreenProps> = ({ onBack }) => {
   const [tab, setTab] = useState<'overview' | 'achievements' | 'history'>('overview');
   const [history, setHistory] = useState(getStoredHistory());
-  const profile = getStoredProfile();
+  const stats = storage.getStats();
 
-  const totalGames = profile.stats.totalGames;
-  const totalWins = profile.stats.totalWins;
+  const totalGames = stats.totalGames;
+  const totalWins = stats.totalWins;
   const winRate = totalGames > 0 ? Math.round((totalWins / totalGames) * 100) : 0;
 
-  const totalClashes = profile.stats.clashesWon + profile.stats.clashesLost;
-  const clashRate = totalClashes > 0 ? Math.round((profile.stats.clashesWon / totalClashes) * 100) : 0;
+  const totalClashes = stats.clashesWon + stats.clashesLost;
+  const clashRate = totalClashes > 0 ? Math.round((stats.clashesWon / totalClashes) * 100) : 0;
 
-  const unlockedIds = new Set(profile.stats.unlockedAchievementIds);
+  const unlockedIds = new Set(stats.unlockedAchievementIds);
 
   const handleClearHistory = () => {
     if (window.confirm('Clear all historical match records?')) {
@@ -117,7 +117,7 @@ export const StatsScreen: React.FC<StatsScreenProps> = ({ onBack }) => {
                 <div className="p-3 bg-[#12131A] rounded-xl border border-[#1E2030]">
                   <span className="text-[10px] text-[#4A5068] block">CLASH VICTORIES</span>
                   <span className="text-lg font-bold text-white mt-1 block">
-                    {profile.stats.clashesWon}
+                    {stats.clashesWon}
                   </span>
                   <span className="text-[9px] text-[#2DD4BF]">{clashRate}% clash rate</span>
                 </div>
@@ -125,7 +125,7 @@ export const StatsScreen: React.FC<StatsScreenProps> = ({ onBack }) => {
                 <div className="p-3 bg-[#12131A] rounded-xl border border-[#1E2030]">
                   <span className="text-[10px] text-[#4A5068] block">TACTICAL RATING</span>
                   <span className="text-lg font-bold text-[#A78BFA] mt-1 block">
-                    {profile.stats.pvpRating}
+                    {stats.pvpRating}
                   </span>
                   <span className="text-[9px] text-[#4A5068]">Rank tier: Veteran</span>
                 </div>
@@ -133,7 +133,7 @@ export const StatsScreen: React.FC<StatsScreenProps> = ({ onBack }) => {
                 <div className="p-3 bg-[#12131A] rounded-xl border border-[#1E2030]">
                   <span className="text-[10px] text-[#4A5068] block">RECON DISPATCHES</span>
                   <span className="text-lg font-bold text-white mt-1 block">
-                    {profile.stats.scoutEffectiveCount}
+                    {stats.scoutEffectiveCount}
                   </span>
                   <span className="text-[9px] text-emerald-400">Scouted clear</span>
                 </div>
@@ -141,7 +141,7 @@ export const StatsScreen: React.FC<StatsScreenProps> = ({ onBack }) => {
                 <div className="p-3 bg-[#12131A] rounded-xl border border-[#1E2030]">
                   <span className="text-[10px] text-[#4A5068] block">INTEL TRUST COUNT</span>
                   <span className="text-lg font-bold text-white mt-1 block">
-                    {profile.stats.intelAnalystCount}
+                    {stats.intelAnalystCount}
                   </span>
                   <span className="text-[9px] text-purple-400">Accurate intel wins</span>
                 </div>

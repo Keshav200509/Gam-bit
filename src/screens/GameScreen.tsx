@@ -22,9 +22,8 @@ import {
   clearActiveGame,
   getStoredSave,
   addStoredHistory,
-  getStoredProfile,
-  saveStoredProfile,
-  getStoredSettings
+  getStoredSettings,
+  storage
 } from '../services/storage';
 import { checkAchievements } from '../domain/achievements';
 import {
@@ -519,8 +518,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       };
       addStoredHistory(historyEntry);
 
-      const profile = getStoredProfile();
-      profile.stats = applyGameToStats(profile.stats, {
+      const stats = applyGameToStats(storage.getStats(), {
         isWin,
         arena,
         level,
@@ -530,7 +528,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         progress: achievementProgress
       });
 
-      const newAchievements = checkAchievements(profile.stats, {
+      const newAchievements = checkAchievements(stats, {
         playerScore: engine.score.playerScore,
         aiScore: engine.score.aiScore,
         durationMs,
@@ -539,11 +537,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         arena,
         level
       });
-      profile.stats.unlockedAchievementIds = [
-        ...new Set([...profile.stats.unlockedAchievementIds, ...newAchievements])
+      stats.unlockedAchievementIds = [
+        ...new Set([...stats.unlockedAchievementIds, ...newAchievements])
       ];
 
-      saveStoredProfile(profile);
+      storage.saveStats(stats);
       setRoundState({ ...endState });
     } else {
       // Start next round

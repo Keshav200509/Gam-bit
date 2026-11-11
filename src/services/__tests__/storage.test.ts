@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   addStoredHistory,
+  clearStoredHistory,
   DEFAULT_PROFILE,
   getStoredHistory,
   getStoredProfile,
@@ -75,6 +76,13 @@ describe('LocalStorageAdapter', () => {
     expect(history[49].id).toBe('g5');
   });
 
+  it('clearHistory removes all history', () => {
+    const adapter = new LocalStorageAdapter();
+    adapter.saveGameResult(entry('g1'));
+    adapter.clearHistory();
+    expect(adapter.getHistory()).toEqual([]);
+  });
+
   it('returns [] for corrupt history', () => {
     localStorage.setItem('gambit_game_history', '{not json');
     expect(new LocalStorageAdapter().getHistory()).toEqual([]);
@@ -90,5 +98,13 @@ describe('legacy history functions', () => {
     expect(getStoredHistory().map(e => e.id)).toEqual(['a']);
     expect(save).toHaveBeenCalledOnce();
     expect(get).toHaveBeenCalled();
+  });
+
+  it('clearStoredHistory delegates to the storage singleton', () => {
+    const clear = vi.spyOn(storage, 'clearHistory');
+    addStoredHistory(entry('a'));
+    clearStoredHistory();
+    expect(clear).toHaveBeenCalledOnce();
+    expect(getStoredHistory()).toEqual([]);
   });
 });

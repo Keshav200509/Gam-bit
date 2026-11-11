@@ -165,6 +165,7 @@ export interface StorageAdapter {
   getHistory(): GameHistoryEntry[];
   /** Prepends a finished game to the history (newest first). */
   saveGameResult(entry: GameHistoryEntry): void;
+  clearHistory(): void;
 }
 
 export class LocalStorageAdapter implements StorageAdapter {
@@ -196,6 +197,14 @@ export class LocalStorageAdapter implements StorageAdapter {
       // Ignore
     }
   }
+
+  clearHistory(): void {
+    try {
+      localStorage.removeItem(HISTORY_KEY);
+    } catch {
+      // Ignore
+    }
+  }
 }
 
 export const storage: StorageAdapter = new LocalStorageAdapter();
@@ -209,11 +218,7 @@ export function addStoredHistory(entry: GameHistoryEntry): void {
 }
 
 export function clearStoredHistory(): void {
-  try {
-    localStorage.removeItem(HISTORY_KEY);
-  } catch {
-    // Ignore
-  }
+  storage.clearHistory();
 }
 
 export function getDailyChallengeSubmission(date: string): { playerScore: number; aiScore: number; submittedAt: string } | null {

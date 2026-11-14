@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Volume2, VolumeX, Smartphone, Zap, Eye, RotateCcw, ShieldAlert, Palette, Check } from 'lucide-react';
 import { AnimatedBackground } from '../components/AnimatedBackground';
-import { getStoredSettings, saveStoredSettings, clearStoredHistory, DEFAULT_PROFILE, saveStoredProfile } from '../services/storage';
+import { getStoredSettings, saveStoredSettings, clearStoredHistory, DEFAULT_PROFILE, saveStoredProfile, storage } from '../services/storage';
 import { GameSettings } from '../types/game';
 import { soundManager } from '../services/soundManager';
 import { haptics } from '../services/haptics';
@@ -30,6 +30,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
   const handleResetProgress = () => {
     if (window.confirm('Reset career statistics and unlocked medals? This cannot be undone.')) {
       saveStoredProfile(DEFAULT_PROFILE);
+      storage.saveStats(DEFAULT_PROFILE.stats);
       clearStoredHistory();
       alert('Career progress reset to factory defaults.');
     }

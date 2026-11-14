@@ -4,6 +4,7 @@ import {
   RoundState,
   Score,
   UserProfile,
+  UserStats,
   ArenaId,
   GameLevelId,
   GameAchievementProgress
@@ -155,33 +156,69 @@ export function clearActiveGame(): void {
   }
 }
 
-export function getStoredHistory(): GameHistoryEntry[] {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch {
-    return [];
+const MAX_HISTORY_ENTRIES = 50;
+
+/** Persistence for career stats and game history; swap the implementation behind `storage`. */
+export interface StorageAdapter {
+  getStats(): UserStats;
+  saveStats(stats: UserStats): void;
+  getHistory(): GameHistoryEntry[];
+  /** Prepends a finished game to the history (newest first). */
+  saveGameResult(entry: GameHistoryEntry): void;
+  clearHistory(): void;
+}
+
+export class LocalStorageAdapter implements StorageAdapter {
+  getStats(): UserStats {
+    return getStoredProfile().stats;
   }
+
+  saveStats(stats: UserStats): void {
+    saveStoredProfile({ ...getStoredProfile(), stats });
+  }
+
+  getHistory(): GameHistoryEntry[] {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (!raw) return [];
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  saveGameResult(entry: GameHistoryEntry): void {
+    try {
+      const history = this.getHistory();
+      history.unshift(entry);
+      if (history.length > MAX_HISTORY_ENTRIES) history.pop();
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch {
+      // Ignore
+    }
+  }
+
+  clearHistory(): void {
+    try {
+      localStorage.removeItem(HISTORY_KEY);
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+export const storage: StorageAdapter = new LocalStorageAdapter();
+
+export function getStoredHistory(): GameHistoryEntry[] {
+  return storage.getHistory();
 }
 
 export function addStoredHistory(entry: GameHistoryEntry): void {
-  try {
-    const history = getStoredHistory();
-    history.unshift(entry);
-    if (history.length > 50) history.pop();
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-  } catch {
-    // Ignore
-  }
+  storage.saveGameResult(entry);
 }
 
 export function clearStoredHistory(): void {
-  try {
-    localStorage.removeItem(HISTORY_KEY);
-  } catch {
-    // Ignore
-  }
+  storage.clearHistory();
 }
 
 export function getDailyChallengeSubmission(date: string): { playerScore: number; aiScore: number; submittedAt: string } | null {

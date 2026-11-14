@@ -91,7 +91,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [aiIncomeDelta, setAiIncomeDelta] = useState<number>(0);
   const [showIncomeSummary, setShowIncomeSummary] = useState<boolean>(false);
 
-  const [showResumeDialog, setShowResumeDialog] = useState<boolean>(false);
+  // Initialised synchronously so the auto-save effect cannot overwrite the save before the dialog shows.
+  const [pendingSave] = useState(() => (isDailyChallenge ? null : getStoredSave()));
+  const [showResumeDialog, setShowResumeDialog] = useState<boolean>(() => !!pendingSave);
   const [timeRemaining, setTimeRemaining] = useState<number>(60);
   const [timerActive, setTimerActive] = useState<boolean>(false);
 
@@ -102,14 +104,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const [clashesLostCount, setClashesLostCount] = useState<number>(0);
   const [scoutUsesCount, setScoutUsesCount] = useState<number>(0);
   const [lockUsesCount, setLockUsesCount] = useState<number>(0);
-
-  // Check saved game on mount
-  useEffect(() => {
-    const saved = getStoredSave();
-    if (saved && !isDailyChallenge) {
-      setShowResumeDialog(true);
-    }
-  }, [isDailyChallenge]);
 
   // Sync sounds & haptics with settings
   useEffect(() => {
@@ -197,8 +191,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
     // 1. Scout Mode
     if (scoutMode) {
-      const updated = engine.applyScout(pos);
-      setRoundState(updated);
+      // The engine doesn't hold in-progress placements/locks, so merge only the scout fields.
+      const { scoutUsed, scoutedPosition, scoutResult } = engine.applyScout(pos);
+      setRoundState({ ...roundState, scoutUsed, scoutedPosition, scoutResult });
       setScoutMode(false);
       setScoutUsesCount(prev => prev + 1);
       soundManager.playScout();
@@ -593,9 +588,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       {/* Resume Dialog */}
       {showResumeDialog && (
         <ResumeDialog
-          roundNumber={roundState.roundNumber}
-          arena={arena}
-          level={level}
+          roundNumber={pendingSave?.roundState.roundNumber ?? roundState.roundNumber}
+          arena={pendingSave?.arena ?? arena}
+          level={pendingSave?.level ?? level}
           onResume={handleResumeGame}
           onDiscard={handleDiscardSave}
         />

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { CloudOff, LogIn, LogOut, RefreshCw, UserCheck } from 'lucide-react';
+import { CloudOff, Code2, Globe, LogIn, LogOut, RefreshCw, UserCheck } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { CloudPlayerStats, syncLocalStatsToCloud } from '../services/cloudSync';
+import { OAuthProvider, signInWithProvider } from '../services/auth';
 import { soundManager } from '../services/soundManager';
 
 type SyncState =
@@ -19,11 +20,17 @@ interface AccountPanelProps {
 const inputClass =
   'w-full px-3 py-2 bg-[#0E1017] rounded-xl border border-[#1E2030] focus:border-[#2DD4BF] text-white font-mono text-xs outline-none transition-all';
 
+const OAUTH_PROVIDERS: { id: OAuthProvider; label: string; Icon: typeof Globe }[] = [
+  { id: 'google', label: 'GOOGLE', Icon: Globe },
+  { id: 'github', label: 'GITHUB', Icon: Code2 }
+];
+
 export const AccountPanel: React.FC<AccountPanelProps> = ({ session, loading }) => {
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [oauthPending, setOauthPending] = useState<OAuthProvider | null>(null);
   const [message, setMessage] = useState<{ tone: 'error' | 'info'; text: string } | null>(null);
   const [sync, setSync] = useState<SyncState>({ status: 'idle' });
 
@@ -65,6 +72,17 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ session, loading }) 
     if (mode === 'signUp' && !data.session) {
       setMessage({ tone: 'info', text: 'Check your email to confirm your account, then sign in.' });
     }
+  };
+
+  const handleOAuth = async (provider: OAuthProvider) => {
+    if (!supabase || oauthPending) return;
+    soundManager.playButtonClick();
+    setOauthPending(provider);
+    setMessage(null);
+    // On success the SDK redirects away; this only resolves on failure.
+    const { error } = await signInWithProvider(supabase, provider, window.location.origin);
+    setOauthPending(null);
+    if (error) setMessage({ tone: 'error', text: error });
   };
 
   const handleSignOut = async () => {
@@ -193,6 +211,27 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ session, loading }) 
         <LogIn size={14} />
         {submitting ? 'CONNECTING...' : mode === 'signIn' ? 'SIGN IN' : 'CREATE ACCOUNT'}
       </button>
+
+      <div className="flex items-center gap-2 my-0.5">
+        <span className="flex-1 h-px bg-[#1E2030]" />
+        <span className="text-[9px] text-[#4A5068] uppercase font-bold">or</span>
+        <span className="flex-1 h-px bg-[#1E2030]" />
+      </div>
+
+      <div className="flex gap-2">
+        {OAUTH_PROVIDERS.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => handleOAuth(id)}
+            disabled={oauthPending !== null}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#0E1017] hover:bg-[#1E2030] border border-[#1E2030] text-white text-[10px] font-bold transition-all disabled:opacity-50 cursor-pointer"
+          >
+            <Icon size={14} className="text-[#2DD4BF]" />
+            {oauthPending === id ? 'LINKING...' : label}
+          </button>
+        ))}
+      </div>
 
       <button
         type="button"

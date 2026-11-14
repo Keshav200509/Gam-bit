@@ -26,3 +26,27 @@ Build for production:
 ```bash
 npm run build
 ```
+
+## Online features (Supabase)
+
+The game runs fully offline by default. To enable accounts, cloud stats and online
+leaderboards, copy `.env.example` to `.env` and fill in:
+
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+```
+
+Then apply `supabase/schema.sql` to your project. Without these values the Profile
+screen shows Guest Mode and everything stays in `localStorage`.
+
+### Sign-in methods
+
+Email/password works out of the box. Google and GitHub sign-in also require the
+provider to be enabled in the Supabase dashboard (**Authentication -> Providers**),
+and the app origin (for example `http://localhost:3000`) added under
+**Authentication -> URL Configuration -> Redirect URLs**. If a provider is not
+enabled, the Profile screen shows the error returned by Supabase.
+
+On the first sign-in, the player's offline career is imported once into
+`player_stats` via the `sync_local_stats` RPC; later sign-ins are no-ops.

@@ -28,8 +28,13 @@ create table if not exists public.game_results (
   score       int,
   turns       int,
   mode        text,
+  result      text check (result in ('WIN', 'LOSS', 'DRAW')),
   created_at  timestamptz not null default now()
 );
+
+-- Installations created before `result` existed.
+alter table public.game_results
+  add column if not exists result text check (result in ('WIN', 'LOSS', 'DRAW'));
 
 create index if not exists player_stats_elo_idx on public.player_stats (elo desc);
 create index if not exists player_stats_high_score_idx on public.player_stats (high_score desc);
@@ -182,8 +187,8 @@ begin
   v_actual   := case p_result when 'WIN' then 1 when 'DRAW' then 0.5 else 0 end;
   v_expected := 1 / (1 + power(10, (1200 - v_stats.elo) / 400.0));
 
-  insert into public.game_results (user_id, score, turns, mode)
-  values (v_uid, p_score, p_turns, p_mode);
+  insert into public.game_results (user_id, score, turns, mode, result)
+  values (v_uid, p_score, p_turns, p_mode, p_result);
 
   update public.player_stats
   set elo        = elo + round(32 * (v_actual - v_expected))::int,

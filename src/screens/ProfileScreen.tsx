@@ -4,6 +4,8 @@ import { AnimatedBackground } from '../components/AnimatedBackground';
 import { UserAvatar } from '../components/UserAvatar';
 import { getStoredProfile, saveStoredProfile } from '../services/storage';
 import { soundManager } from '../services/soundManager';
+import { AccountPanel } from '../components/AccountPanel';
+import { useSupabaseSession } from '../hooks/useSupabaseSession';
 
 interface ProfileScreenProps {
   onBack: () => void;
@@ -13,6 +15,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
   const [profile, setProfile] = useState(getStoredProfile());
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(profile.displayName);
+
+  const { session, loading } = useSupabaseSession();
 
   const avatars = ['avatar-1', 'avatar-2', 'avatar-3', 'avatar-4'];
 
@@ -53,7 +57,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
             COMMANDER PROFILE
           </h2>
 
-          <div className="w-12" />
+          <span
+            className={`w-12 text-center text-[9px] font-mono font-bold ${session ? 'text-[#2DD4BF]' : 'text-[#4A5068]'}`}
+          >
+            {session ? 'ONLINE' : 'GUEST'}
+          </span>
         </header>
 
         {/* Content */}
@@ -101,6 +109,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
               RATING {profile.stats.pvpRating} &bull; TACTICAL COMMANDER
             </span>
           </div>
+
+          <AccountPanel session={session} loading={loading} />
 
           {/* Avatar switcher */}
           <div className="w-full p-4 bg-[#12131A] rounded-2xl border border-[#1E2030] flex flex-col items-center">

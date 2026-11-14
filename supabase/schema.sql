@@ -19,8 +19,13 @@ create table if not exists public.player_stats (
   elo         int not null default 1200,
   wins        int not null default 0,
   losses      int not null default 0,
-  high_score  int not null default 0
+  high_score  int not null default 0,
+  local_synced_at timestamptz
 );
+
+-- Installations created before `local_synced_at` existed.
+alter table public.player_stats
+  add column if not exists local_synced_at timestamptz;
 
 create table if not exists public.game_results (
   id          bigserial primary key,
@@ -204,3 +209,53 @@ $$;
 
 revoke execute on function public.record_game_result(int, int, text, text) from public, anon;
 grant execute on function public.record_game_result(int, int, text, text) to authenticated;
+
+-- One-time import of a player's offline (localStorage) career into their account,
+-- called right after sign-in. Adds the offline wins/losses and raises high_score;
+-- elo is left to record_game_result. Later calls are no-ops that return the row, so
+-- the same offline games are never counted twice.
+-- Call from the client: supabase.rpc('sync_local_stats', { p_wins, p_losses, p_high_score })
+create or replace function public.sync_local_stats(
+  p_wins       int,
+  p_losses     int,
+  p_high_score int
+)
+returns public.player_stats
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid   uuid := auth.uid();
+  v_stats public.player_stats;
+begin
+  if v_uid is null then
+    raise exception 'not authenticated' using errcode = '42501';
+  end if;
+  if p_wins is null or p_losses is null or p_high_score is null
+     or p_wins < 0 or p_losses < 0 or p_high_score < 0
+     or p_wins + p_losses > 10000 then
+    raise exception 'invalid offline stats' using errcode = '22023';
+  end if;
+
+  insert into public.player_stats (user_id) values (v_uid)
+  on conflict (user_id) do nothing;
+
+  update public.player_stats
+  set wins            = wins + p_wins,
+      losses          = losses + p_losses,
+      high_score      = greatest(high_score, p_high_score),
+      local_synced_at = now()
+  where user_id = v_uid and local_synced_at is null
+  returning * into v_stats;
+
+  if v_stats is null then
+    select * into v_stats from public.player_stats where user_id = v_uid;
+  end if;
+
+  return v_stats;
+end;
+$$;
+
+revoke execute on function public.sync_local_stats(int, int, int) from public, anon;
+grant execute on function public.sync_local_stats(int, int, int) to authenticated;

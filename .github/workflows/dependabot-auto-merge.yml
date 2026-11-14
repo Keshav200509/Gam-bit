@@ -1,0 +1,53 @@
+name: Dependabot auto-merge
+
+# Runs once the CI workflow finishes. A merge only happens when that run
+# concluded successfully, so a Dependabot PR is merged only while its tests pass.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Merge Dependabot PR
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Squash-merge the Dependabot PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          pr=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" \
+            --jq '[.[] | select(.user.login == "dependabot[bot]")][0].number')
+
+          if [ -z "$pr" ] || [ "$pr" = "null" ]; then
+            echo "No Dependabot pull request for $HEAD_SHA; nothing to merge."
+            exit 0
+          fi
+
+          read -r state head < <(gh api "repos/$REPO/pulls/$pr" --jq '.state + " " + .head.sha')
+
+          if [ "$state" != "open" ]; then
+            echo "Pull request #$pr is $state; nothing to merge."
+            exit 0
+          fi
+
+          # Guard against merging a commit CI never tested: if the PR gained
+          # commits after this run started, let the newer run handle it.
+          if [ "$head" != "$HEAD_SHA" ]; then
+            echo "Pull request #$pr moved on to $head; skipping in favour of the newer run."
+            exit 0
+          fi
+
+          echo "Tests passed for Dependabot pull request #$pr; squash-merging."
+          gh pr merge "$pr" --repo "$REPO" --squash

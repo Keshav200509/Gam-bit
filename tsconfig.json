@@ -18,7 +18,10 @@
     "strict": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Serverless route (api/) runs on Node */
+    "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "api"]
 }

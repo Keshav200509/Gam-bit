@@ -33,3 +33,19 @@ Repository notes for future agent sessions.
 This version has **no brand icons** — `Github`, `Google`, `Chrome`, etc. do not exist and
 will break the build. Use generic icons (`Globe`, `Code2`) or verify a name exists before
 importing it.
+
+## Online PvP (Realtime Broadcast)
+
+- `src/domain/pvpSync.ts` holds the whole protocol as pure functions: room-code
+  normalisation, `seededRandomFromRoomCode` (both clients seed `generateBoard` so the
+  board is never transmitted), `deriveRoles` (roles agreed by sorting peer ids seen
+  over presence), `isPvpMessage` (validate untrusted broadcast payloads), and
+  `resolveRound` (deterministic row-major resolution reusing `resolveClash` +
+  `calculateIncome`).
+- `src/services/pvpChannel.ts` wraps one Realtime channel; it is faked in tests by a
+  plain object exposing `on`/`subscribe`/`send`/`track`/`untrack`/`presenceState`.
+- `src/hooks/usePvpSession.ts` owns connection/presence/role state. `PvPGameScreen`
+  stays in offline hotseat mode when `roomCode` is undefined; the online path only
+  activates with a room code and a configured Supabase client.
+- Moves are exchanged per round; the board and scores are never sent. Do not add a
+  server-side board or role handshake without revisiting this invariant.

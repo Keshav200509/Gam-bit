@@ -1,10 +1,10 @@
 /**
  * POST /api/submit-score
  *
- * Serverless (Vercel / Netlify) score-verification endpoint. Validates a
- * submitted game result against the engine's scoring bounds, then writes it to
- * `player_stats` with the service-role key. The browser only ever holds the
- * anon key, so a score can never be written directly from the client.
+ * Serverless score-verification endpoint. Validates a submitted game result
+ * against the engine's scoring bounds, then writes it to `player_stats` with the
+ * service-role key. The browser only ever holds the anon key, so a score can
+ * never be written directly from the client.
  *
  * Body:   { userId: string, score: number, turns: number, gameMode: string }
  * 200:    { status: "success", verified: true, stats: {...} }
@@ -14,12 +14,12 @@
 import { createClient } from '@supabase/supabase-js';
 import { verifyScoreSubmission } from '../src/services/scoreVerification';
 
-interface VercelRequest {
+interface HttpRequest {
   method?: string;
   body?: unknown;
 }
-interface VercelResponse {
-  status(code: number): VercelResponse;
+interface HttpResponse {
+  status(code: number): HttpResponse;
   json(payload: unknown): void;
   setHeader(name: string, value: string): void;
   end(): void;
@@ -33,7 +33,7 @@ function serverEnv(): { url: string; serviceRoleKey: string } | null {
   return { url, serviceRoleKey };
 }
 
-/** Vercel parses JSON bodies, but Netlify and raw requests may hand us a string. */
+/** Some hosts hand us a parsed object, others a raw JSON string. */
 function parseBody(body: unknown): unknown {
   if (typeof body === 'string') {
     try {
@@ -45,7 +45,7 @@ function parseBody(body: unknown): unknown {
   return body;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: HttpRequest, res: HttpResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ status: 'error', verified: false, reason: 'Method not allowed' });

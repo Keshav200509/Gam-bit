@@ -53,9 +53,9 @@ On the first sign-in, the player's offline career is imported once into
 
 ### Score verification endpoint
 
-`api/submit-score.ts` is a serverless function (Vercel or Netlify) that validates
-a submitted result before it can reach `player_stats`. The browser only holds the
-anon key, so a client cannot write stats directly; this route is the write path.
+`api/submit-score.ts` is a serverless function that validates a submitted result
+before it can reach `player_stats`. The browser only holds the anon key, so a
+client cannot write stats directly; this route is the write path.
 
 ```
 POST /api/submit-score

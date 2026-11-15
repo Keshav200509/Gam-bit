@@ -51,6 +51,24 @@ enabled, the Profile screen shows the error returned by Supabase.
 On the first sign-in, the player's offline career is imported once into
 `player_stats` via the `sync_local_stats` RPC; later sign-ins are no-ops.
 
+### Online PvP (Realtime Broadcast)
+
+The Friends screen can open a private room or join one by code. Both clients
+subscribe to a Supabase Realtime Broadcast channel named `room:[CODE]`, where
+`[CODE]` is the room code (upper-cased). No tables or RLS policies are needed:
+moves travel as broadcast messages and the game board is never transmitted.
+
+The duel is peer-to-peer and deterministic. Both clients seed the board generator
+from the room code (`seededRandomFromRoomCode`) and exchange only each player's
+committed orders for a round. Each client then runs the same local evaluation
+(`resolveRound` in `src/domain/pvpSync.ts`, which reuses the existing
+`resolveClash` and `calculateIncome`), so both boards and scores stay identical.
+
+Roles are assigned by sorting the peer ids both clients see over Realtime
+presence, so `P1`/`P2` agree without any negotiation. If Supabase is not
+configured, the room UI still renders but the duel stays in the offline hotseat
+mode.
+
 ### Score verification endpoint
 
 `api/submit-score.ts` is a serverless function that validates a submitted result

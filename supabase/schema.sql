@@ -259,3 +259,48 @@ $$;
 
 revoke execute on function public.sync_local_stats(int, int, int) from public, anon;
 grant execute on function public.sync_local_stats(int, int, int) to authenticated;
+
+-- Records a score that already passed server-side bounds validation in
+-- /api/submit-score. Unlike record_game_result this is NOT callable by clients:
+-- it runs with the service-role key, which is the only holder of execute rights.
+-- It logs the result and raises high_score; elo and wins stay with
+-- record_game_result so a score submission cannot double-count a game.
+-- Call from the API route: supabase.rpc('submit_verified_score', { p_user_id, p_score, p_turns, p_game_mode })
+create or replace function public.submit_verified_score(
+  p_user_id   uuid,
+  p_score     int,
+  p_turns     int,
+  p_game_mode text
+)
+returns public.player_stats
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_stats public.player_stats;
+begin
+  if p_user_id is null then
+    raise exception 'p_user_id is required' using errcode = '22023';
+  end if;
+  if p_score is null or p_score <= 0 or p_turns is null or p_turns <= 0 then
+    raise exception 'p_score and p_turns must be > 0' using errcode = '22023';
+  end if;
+
+  insert into public.player_stats (user_id) values (p_user_id)
+  on conflict (user_id) do nothing;
+
+  insert into public.game_results (user_id, score, turns, mode, result)
+  values (p_user_id, p_score, p_turns, p_game_mode, null);
+
+  update public.player_stats
+  set high_score = greatest(high_score, p_score)
+  where user_id = p_user_id
+  returning * into v_stats;
+
+  return v_stats;
+end;
+$$;
+
+revoke execute on function public.submit_verified_score(uuid, int, int, text) from public, anon, authenticated;
+grant execute on function public.submit_verified_score(uuid, int, int, text) to service_role;

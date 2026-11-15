@@ -50,3 +50,28 @@ enabled, the Profile screen shows the error returned by Supabase.
 
 On the first sign-in, the player's offline career is imported once into
 `player_stats` via the `sync_local_stats` RPC; later sign-ins are no-ops.
+
+### Score verification endpoint
+
+`api/submit-score.ts` is a serverless function (Vercel or Netlify) that validates
+a submitted result before it can reach `player_stats`. The browser only holds the
+anon key, so a client cannot write stats directly; this route is the write path.
+
+```
+POST /api/submit-score
+{ "userId": "<uuid>", "score": 142, "turns": 12, "gameMode": "ASCENDENCY" }
+
+200 { "status": "success", "verified": true, "stats": { ... } }
+400 { "status": "rejected", "verified": false, "reason": "..." }
+```
+
+It rejects `score <= 0`, `turns <= 0`, and any score above the theoretical
+points-per-turn ceiling derived from `src/domain/incomeCalculator.ts` (25 cells x
+4 value x 2 golden-cell x 2 round multiplier = 400 per turn). Valid submissions
+are written through the `submit_verified_score` RPC, which is granted to
+`service_role` only. Set these server-side environment variables (not `VITE_`):
+
+```
+SUPABASE_URL=...                  # optional, falls back to VITE_SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY=...
+```

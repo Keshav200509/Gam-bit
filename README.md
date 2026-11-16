@@ -51,6 +51,7 @@ enabled, the Profile screen shows the error returned by Supabase.
 On the first sign-in, the player's offline career is imported once into
 `player_stats` via the `sync_local_stats` RPC; later sign-ins are no-ops.
 
+
 ### Online PvP (Realtime Broadcast)
 
 The Friends screen can open a private room or join one by code. Both clients
@@ -68,6 +69,14 @@ Roles are assigned by sorting the peer ids both clients see over Realtime
 presence, so `P1`/`P2` agree without any negotiation. If Supabase is not
 configured, the room UI still renders but the duel stays in the offline hotseat
 mode.
+
+### Leaderboard
+
+The leaderboard has two tabs. **Global** reads live standings from `player_stats`
+joined to `profiles`, ordered by `high_score` then `elo`; it shows a loading state
+and a retry button if the request fails. **This Device** is the offline view and
+needs no backend. Without the env vars above the screen opens on This Device, and
+Global shows an "uplink not configured" notice.
 
 ### Score verification endpoint
 
@@ -93,3 +102,4 @@ are written through the `submit_verified_score` RPC, which is granted to
 SUPABASE_URL=...                  # optional, falls back to VITE_SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY=...
 ```
+

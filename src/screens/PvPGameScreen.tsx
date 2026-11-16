@@ -1,12 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Swords, CheckCircle2, UserCheck, Shield } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, UserCheck, Wifi, WifiOff, Users } from 'lucide-react';
 import { Board, Position, Token, ClashResult } from '../types/game';
 import { generateBoard } from '../domain/boardGenerator';
-import { calculateIncome } from '../domain/incomeCalculator';
-import { resolveClash } from '../domain/clashResolver';
+import {
+  GameMovePayload,
+  PVP_MOVE_EVENT,
+  PvpMessage,
+  resolveRound,
+  seededRandomFromRoomCode,
+  senderRoleForPhase
+} from '../domain/pvpSync';
 import { posKey } from '../domain/positionUtils';
 import { soundManager } from '../services/soundManager';
 import { haptics } from '../services/haptics';
+import { getStoredProfile } from '../services/storage';
+import { usePvpSession } from '../hooks/usePvpSession';
 import { GameBoard } from '../components/GameBoard';
 import { TokenBar } from '../components/TokenBar';
 import { ActionBar } from '../components/ActionBar';
@@ -16,12 +24,19 @@ import { ResultScreen } from './ResultScreen';
 
 interface PvPGameScreenProps {
   opponentName: string;
+  /** Present for an online duel; absent keeps the original local hotseat mode. */
+  roomCode?: string;
   onBack: () => void;
 }
 
-export const PvPGameScreen: React.FC<PvPGameScreenProps> = ({ opponentName, onBack }) => {
+export const PvPGameScreen: React.FC<PvPGameScreenProps> = ({ opponentName, roomCode, onBack }) => {
+  const isOnline = !!roomCode;
+  const [myName] = useState(() => getStoredProfile().displayName || 'Commander');
+
   const [roundNumber, setRoundNumber] = useState<number>(1);
-  const [board, setBoard] = useState<Board>(() => generateBoard());
+  const [board, setBoard] = useState<Board>(() =>
+    isOnline ? generateBoard(seededRandomFromRoomCode(roomCode as string)) : generateBoard()
+  );
   const [player1Score, setPlayer1Score] = useState<number>(0);
   const [player2Score, setPlayer2Score] = useState<number>(0);
 
@@ -42,14 +57,110 @@ export const PvPGameScreen: React.FC<PvPGameScreenProps> = ({ opponentName, onBa
   const [p1IncomeDelta, setP1IncomeDelta] = useState<number>(0);
   const [p2IncomeDelta, setP2IncomeDelta] = useState<number>(0);
   const [showIncome, setShowIncome] = useState<boolean>(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const isP1Turn = turnState === 'P1_PLACING';
   const isP2Turn = turnState === 'P2_PLACING';
   const currentPlacements = isP1Turn ? p1Placements : isP2Turn ? p2Placements : {};
   const currentLocks = isP1Turn ? p1Locks : isP2Turn ? p2Locks : [];
 
+  // ----- Online session ------------------------------------------------------
+  // The Realtime callback must always see the current round/phase, so the mutable
+  // values it reads live in refs rather than in the closure.
+  const turnStateRef = useRef(turnState);
+  turnStateRef.current = turnState;
+  const roundRef = useRef(roundNumber);
+  roundRef.current = roundNumber;
+  const boardRef = useRef(board);
+  boardRef.current = board;
+  /** This client's committed orders for the current round. */
+  const localMoveRef = useRef<GameMovePayload | null>(null);
+  /** The opponent's orders for the current round. */
+  const remoteMoveRef = useRef<GameMovePayload | null>(null);
+  /** Moves that arrived before this client finished the previous round's income screen. */
+  const pendingMovesRef = useRef<Map<number, GameMovePayload>>(new Map());
+
+  /**
+   * Applies the opponent's move to the local engine.
+   *
+   * Only moves are exchanged, never board state: both clients re-run the same
+   * `resolveRound` on the same inputs, so they stay in lockstep.
+   */
+  const ingestRemoteMove = (payload: GameMovePayload) => {
+    const phase = turnStateRef.current;
+    // Placement order is fixed (P1 then P2), so the phase tells us who sent this.
+    const senderRole = senderRoleForPhase(phase);
+    if (!senderRole) return;
+
+    remoteMoveRef.current = payload;
+
+    if (senderRole === 'P1') {
+      // The opponent (P1) has committed; it is now this client's (P2) turn.
+      setP1Placements(payload.placements);
+      setP1Locks(payload.locks);
+      setTurnState('P2_PLACING');
+      return;
+    }
+
+    // The opponent (P2) has committed and this client (P1) already did: resolve.
+    setP2Placements(payload.placements);
+    setP2Locks(payload.locks);
+    const local = localMoveRef.current;
+    if (local) {
+      void runResolution(local.placements, local.locks, payload.placements, payload.locks, payload.round);
+    }
+  };
+
+  const handleRemoteMessage = (message: PvpMessage) => {
+    const { round } = message.payload;
+    if (round === roundRef.current) {
+      ingestRemoteMove(message.payload);
+    } else if (round === roundRef.current + 1) {
+      // Opponent finished the income screen first; hold the move until this
+      // client advances a round, otherwise it would be dropped as "stale".
+      pendingMovesRef.current.set(round, message.payload);
+    }
+  };
+
+  const {
+    role,
+    status,
+    opponentName: remoteName,
+    hasOpponent,
+    opponentLeft,
+    sendMove,
+    isOnline: connected
+  } = usePvpSession(roomCode ?? '', myName, handleRemoteMessage);
+
+  const myRole = isOnline ? role : 'P1';
+  const displayOpponent = remoteName ?? opponentName;
+
+  // Apply any move that was buffered while the income screen was open.
+  useEffect(() => {
+    const pending = pendingMovesRef.current.get(roundNumber);
+    if (pending) {
+      pendingMovesRef.current.delete(roundNumber);
+      ingestRemoteMove(pending);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundNumber]);
+
+  useEffect(() => {
+    if (isOnline && opponentLeft) setNotice(`${displayOpponent} lost the comm-link.`);
+  }, [isOnline, opponentLeft, displayOpponent]);
+
+  useEffect(() => {
+    if (isOnline && hasOpponent) setNotice(null);
+  }, [isOnline, hasOpponent]);
+
+  // ----- Local turn handling -------------------------------------------------
+  const canLocalPlace = isOnline
+    ? hasOpponent && ((isP1Turn && myRole === 'P1') || (isP2Turn && myRole === 'P2'))
+    : isP1Turn || isP2Turn;
+
   const handleCellClick = (pos: Position) => {
     if (!isP1Turn && !isP2Turn) return;
+    if (isOnline && !canLocalPlace) return;
     const key = posKey(pos);
 
     if (lockMode) {
@@ -119,11 +230,21 @@ export const PvPGameScreen: React.FC<PvPGameScreenProps> = ({ opponentName, onBa
     }
   };
 
+  const broadcastMove = (placements: Record<string, Token>, locks: Position[]) => {
+    sendMove({ type: PVP_MOVE_EVENT, payload: { round: roundNumber, placements, locks } });
+  };
+
   const handleCommitP1 = () => {
     soundManager.playButtonClick();
+    setLockMode(false);
+    if (isOnline) {
+      localMoveRef.current = { round: roundNumber, placements: p1Placements, locks: p1Locks };
+      broadcastMove(p1Placements, p1Locks);
+      setTurnState('P2_PLACING');
+      return;
+    }
     setTurnState('PASS_TO_P2');
     setSelectedToken(1);
-    setLockMode(false);
   };
 
   const handleStartP2 = () => {
@@ -131,70 +252,53 @@ export const PvPGameScreen: React.FC<PvPGameScreenProps> = ({ opponentName, onBa
     setTurnState('P2_PLACING');
   };
 
-  const handleCommitP2 = async () => {
+  const handleCommitP2 = () => {
     soundManager.playButtonClick();
-    setTurnState('RESOLVING');
     setLockMode(false);
-
-    // Clash resolution
-    const activePositions: Position[] = [];
-    for (let r = 0; r < 5; r++) {
-      for (let c = 0; c < 5; c++) {
-        const k = `${r},${c}`;
-        if (p1Placements[k] || p2Placements[k]) {
-          activePositions.push({ row: r, col: c });
-        }
-      }
+    if (isOnline) {
+      const move: GameMovePayload = { round: roundNumber, placements: p2Placements, locks: p2Locks };
+      broadcastMove(p2Placements, p2Locks);
+      // P1 can only reach P2_PLACING after its own move arrived, so it is present.
+      const remote = remoteMoveRef.current;
+      if (remote) void runResolution(remote.placements, remote.locks, move.placements, move.locks, roundNumber);
+      return;
     }
+    setTurnState('RESOLVING');
+    void runResolution(p1Placements, p1Locks, p2Placements, p2Locks, roundNumber);
+  };
 
-    let currentBoard = board;
-    const resultsMap: Record<string, ClashResult> = {};
+  /**
+   * Resolves a round locally and reveals each clash in sequence. Both clients
+   * call this with identical inputs, so they converge on the same board.
+   */
+  const runResolution = async (
+    p1p: Record<string, Token>,
+    p1l: Position[],
+    p2p: Record<string, Token>,
+    p2l: Position[],
+    round: number
+  ) => {
+    setTurnState('RESOLVING');
+    const resolution = resolveRound(boardRef.current, round, p1p, p1l, p2p, p2l);
 
-    for (const pos of activePositions) {
-      const k = posKey(pos);
-      setCurrentResolvingPosition(pos);
+    for (const step of resolution.steps) {
+      setCurrentResolvingPosition(step.position);
       soundManager.playTokenPlace();
       await new Promise(r => setTimeout(r, 250));
-
-      const res = resolveClash(pos, p1Placements, p2Placements, currentBoard, p1Locks, p2Locks);
-      resultsMap[k] = res;
-      setClashResults({ ...resultsMap });
-
-      let newOwner = currentBoard.cells[pos.row][pos.col].owner;
-      if (res.type === 'PlayerWins' || res.type === 'PlayerUncontested' || res.type === 'PlayerDefends') {
-        newOwner = 'PLAYER';
-        soundManager.playClashWin();
-      } else if (res.type === 'AIWins' || res.type === 'AIUncontested' || res.type === 'AIDefends') {
-        newOwner = 'AI'; // Player 2 acts as "AI" ownership on board
-        soundManager.playClashLose();
-      } else {
-        newOwner = 'NONE';
-        soundManager.playClashTie();
-      }
-
-      currentBoard = {
-        cells: currentBoard.cells.map((rowArr, rIdx) =>
-          rowArr.map((cellObj, cIdx) => {
-            if (rIdx === pos.row && cIdx === pos.col) {
-              return { ...cellObj, owner: newOwner };
-            }
-            return cellObj;
-          })
-        )
-      };
-
-      setBoard(currentBoard);
+      setClashResults(prev => ({ ...prev, [posKey(step.position)]: step.result }));
+      if (step.result.type.startsWith('Player')) soundManager.playClashWin();
+      else if (step.result.type.startsWith('AI')) soundManager.playClashLose();
+      else soundManager.playClashTie();
+      setBoard(step.board);
       await new Promise(r => setTimeout(r, 300));
     }
 
     setCurrentResolvingPosition(null);
-
-    // Calculate revenue
-    const { playerIncome, aiIncome } = calculateIncome(currentBoard, roundNumber);
-    setPlayer1Score(prev => prev + playerIncome);
-    setPlayer2Score(prev => prev + aiIncome);
-    setP1IncomeDelta(playerIncome);
-    setP2IncomeDelta(aiIncome);
+    setBoard(resolution.board);
+    setPlayer1Score(prev => prev + resolution.playerIncome);
+    setPlayer2Score(prev => prev + resolution.aiIncome);
+    setP1IncomeDelta(resolution.playerIncome);
+    setP2IncomeDelta(resolution.aiIncome);
     setShowIncome(true);
   };
 
@@ -207,6 +311,8 @@ export const PvPGameScreen: React.FC<PvPGameScreenProps> = ({ opponentName, onBa
     setP1Locks([]);
     setP2Locks([]);
     setClashResults({});
+    localMoveRef.current = null;
+    remoteMoveRef.current = null;
 
     if (roundNumber >= 12) {
       setTurnState('GAME_OVER');
@@ -232,7 +338,10 @@ export const PvPGameScreen: React.FC<PvPGameScreenProps> = ({ opponentName, onBa
         scoutUses={0}
         lockUses={p1Locks.length}
         onPlayAgain={() => {
-          setBoard(generateBoard());
+          pendingMovesRef.current.clear();
+          localMoveRef.current = null;
+          remoteMoveRef.current = null;
+          setBoard(isOnline ? generateBoard(seededRandomFromRoomCode(roomCode as string)) : generateBoard());
           setPlayer1Score(0);
           setPlayer2Score(0);
           setRoundNumber(1);
@@ -278,17 +387,54 @@ export const PvPGameScreen: React.FC<PvPGameScreenProps> = ({ opponentName, onBa
           <span className="text-white font-bold">ROUND {roundNumber}/12</span>
         </div>
 
-        <div className="w-12" />
+        {isOnline ? (
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#12131A] border border-[#1E2030] font-mono text-[10px]">
+            {connected && hasOpponent ? (
+              <>
+                <Wifi size={12} className="text-[#2DD4BF]" />
+                <span className="text-[#2DD4BF]">LIVE</span>
+              </>
+            ) : (
+              <>
+                <WifiOff size={12} className="text-amber-400" />
+                <span className="text-amber-400">{status === 'connecting' ? 'LINKING' : 'OFFLINE'}</span>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="w-12" />
+        )}
       </header>
+
+      {/* Room / connection strip */}
+      {isOnline && (
+        <div className="px-3 py-1.5 bg-[#0E1017] border-b border-[#1E2030] font-mono text-[10px] flex items-center justify-between">
+          <span className="text-[#4A5068]">
+            COMM-LINK <span className="text-[#2DD4BF]">room:{(roomCode as string).toUpperCase()}</span>
+          </span>
+          <span className={hasOpponent ? 'text-[#2DD4BF]' : 'text-amber-400'}>
+            <Users size={11} className="inline mr-1 -mt-0.5" />
+            {hasOpponent ? `${displayOpponent} LINKED` : 'AWAITING OPPONENT'}
+          </span>
+        </div>
+      )}
+
+      {notice && (
+        <div className="px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/30 text-amber-300 font-mono text-[10px]">
+          {notice}
+        </div>
+      )}
 
       {/* Scores Banner */}
       <div className="grid grid-cols-2 p-3 bg-[#12131A] border-b border-[#1E2030] font-mono text-center">
         <div className="border-r border-[#1E2030]">
-          <span className="text-[10px] text-[#2DD4BF] font-bold block">PLAYER 1 (YOU)</span>
+          <span className="text-[10px] text-[#2DD4BF] font-bold block">
+            {isOnline ? `${myRole ?? 'P1'} (YOU)` : 'PLAYER 1 (YOU)'}
+          </span>
           <span className="text-2xl font-black text-white">{player1Score}</span>
         </div>
         <div>
-          <span className="text-[10px] text-purple-400 font-bold block">{opponentName}</span>
+          <span className="text-[10px] text-purple-400 font-bold block">{displayOpponent}</span>
           <span className="text-2xl font-black text-white">{player2Score}</span>
         </div>
       </div>
@@ -297,22 +443,34 @@ export const PvPGameScreen: React.FC<PvPGameScreenProps> = ({ opponentName, onBa
       <main className="flex-1 flex flex-col items-center justify-between p-4 max-w-lg mx-auto w-full gap-2">
         <RoundProgressDots currentRound={roundNumber} />
 
-        {/* Turn Handoff Interstitial */}
-        {turnState === 'PASS_TO_P2' ? (
+        {/* Waiting for an opponent to join the room (online only) */}
+        {isOnline && !hasOpponent ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 bg-[#12131A] rounded-2xl border border-teal-500/40 text-center my-6">
+            <Wifi size={48} className="text-[#2DD4BF] mb-3 animate-pulse" />
+            <h3 className="text-lg font-mono font-extrabold text-white uppercase mb-1">AWAITING OPPONENT</h3>
+            <p className="text-xs font-sans text-[#C8D0E0] mb-3">
+              Share this frequency so your opponent can join the duel:
+            </p>
+            <div className="px-4 py-2 bg-[#0E1017] rounded-xl border border-[#1E2030] font-mono text-lg font-black text-[#2DD4BF] tracking-widest">
+              {(roomCode as string).toUpperCase()}
+            </div>
+          </div>
+        ) : /* Turn Handoff Interstitial (hotseat only) */
+        !isOnline && turnState === 'PASS_TO_P2' ? (
           <div className="flex-1 flex flex-col items-center justify-center p-6 bg-[#12131A] rounded-2xl border border-purple-500/40 text-center my-6">
             <UserCheck size={48} className="text-[#A78BFA] mb-3 animate-pulse" />
             <h3 className="text-lg font-mono font-extrabold text-white uppercase mb-1">
               PLAYER 1 ORDERS LOCKED
             </h3>
             <p className="text-xs font-sans text-[#C8D0E0] mb-6">
-              Hand the terminal to <strong>{opponentName}</strong> to deploy their 5 tokens secretly.
+              Hand the terminal to <strong>{displayOpponent}</strong> to deploy their 5 tokens secretly.
             </p>
             <button
               type="button"
               onClick={handleStartP2}
               className="py-3 px-6 rounded-xl font-mono text-xs font-black bg-[#A78BFA] text-black shadow-lg shadow-purple-500/30 cursor-pointer"
             >
-              READY — START {opponentName}'S TURN
+              READY — START {displayOpponent.toUpperCase()}'S TURN
             </button>
           </div>
         ) : (
@@ -320,7 +478,13 @@ export const PvPGameScreen: React.FC<PvPGameScreenProps> = ({ opponentName, onBa
             <div className="flex items-center gap-2 px-3 py-1 bg-[#12131A] rounded-full border border-[#1E2030] text-xs font-mono">
               <span className={`w-2 h-2 rounded-full ${isP1Turn ? 'bg-[#2DD4BF]' : 'bg-[#A78BFA]'} animate-ping`} />
               <span className="font-bold text-white">
-                {isP1Turn ? 'DEPLOYING: PLAYER 1' : isP2Turn ? `DEPLOYING: ${opponentName}` : 'CLASH RESOLUTION'}
+                {!canLocalPlace && turnState !== 'RESOLVING'
+                  ? 'WAITING: OPPONENT DEPLOYING'
+                  : isP1Turn
+                  ? 'DEPLOYING: PLAYER 1'
+                  : isP2Turn
+                  ? `DEPLOYING: ${displayOpponent}`
+                  : 'CLASH RESOLUTION'}
               </span>
             </div>
 
@@ -343,7 +507,7 @@ export const PvPGameScreen: React.FC<PvPGameScreenProps> = ({ opponentName, onBa
               lockMode={lockMode}
             />
 
-            {(isP1Turn || isP2Turn) && (
+            {canLocalPlace && (
               <>
                 <TokenBar
                   playerPlacements={currentPlacements}

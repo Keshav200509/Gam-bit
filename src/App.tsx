@@ -38,6 +38,7 @@ export const App: React.FC = () => {
   const [isDailyChallenge, setIsDailyChallenge] = useState<boolean>(false);
   const [dailySeed, setDailySeed] = useState<number>(0);
   const [pvpOpponentName, setPvpOpponentName] = useState<string>('Opponent');
+  const [pvpRoomCode, setPvpRoomCode] = useState<string | null>(null);
 
   const hasSavedGame = !!getStoredSave();
 
@@ -78,8 +79,9 @@ export const App: React.FC = () => {
     setCurrentScreen('game');
   };
 
-  const handleStartPvPDuel = (opponent: string) => {
+  const handleStartPvPDuel = (opponent: string, roomCode?: string) => {
     setPvpOpponentName(opponent);
+    setPvpRoomCode(roomCode ?? null);
     setCurrentScreen('pvp_game');
   };
 
@@ -161,6 +163,7 @@ export const App: React.FC = () => {
       {currentScreen === 'pvp_game' && (
         <PvPGameScreen
           opponentName={pvpOpponentName}
+          roomCode={pvpRoomCode ?? undefined}
           onBack={() => setCurrentScreen('friends')}
         />
       )}

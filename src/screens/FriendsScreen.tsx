@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, UserPlus, Users, Swords, Copy, Check, Shield } from 'lucide-react';
+import { ArrowLeft, UserPlus, Users, Swords, Copy, Check, Shield, Wifi } from 'lucide-react';
 import { AnimatedBackground } from '../components/AnimatedBackground';
 import { UserAvatar } from '../components/UserAvatar';
 import { getStoredProfile } from '../services/storage';
@@ -7,20 +7,55 @@ import { soundManager } from '../services/soundManager';
 
 interface FriendsScreenProps {
   onBack: () => void;
-  onStartPvPMatch: (opponentName: string) => void;
+  onStartPvPMatch: (opponentName: string, roomCode?: string) => void;
+}
+
+/** Room codes are the shared secret two clients use to find the same channel. */
+function generateRoomCode(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return code;
 }
 
 export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onStartPvPMatch }) => {
   const profile = getStoredProfile();
   const [copiedCode, setCopiedCode] = useState(false);
   const [addCode, setAddCode] = useState('');
+  const [joinCode, setJoinCode] = useState('');
+  const [roomCode, setRoomCode] = useState<string | null>(null);
   const [friends, setFriends] = useState([
     { id: 'f1', name: 'Commander_Ares', rating: 1120, status: 'ONLINE', avatar: 'avatar-2' },
     { id: 'f2', name: 'Tactical_Valkyrie', rating: 1060, status: 'IN_MATCH', avatar: 'avatar-3' },
     { id: 'f3', name: 'ShadowPilot', rating: 980, status: 'OFFLINE', avatar: 'avatar-4' }
   ]);
 
-  const inviteCode = `GAMBIT-${profile.uid.substring(0, 6).toUpperCase()}`;
+    const inviteCode = `GAMBIT-${profile.uid.substring(0, 6).toUpperCase()}`;
+
+    const handleCreateRoom = () => {
+      const code = generateRoomCode();
+      setRoomCode(code);
+      navigator.clipboard?.writeText(code);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+      soundManager.playButtonClick();
+    };
+
+    const handleJoinRoom = () => {
+      const code = joinCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (code.length < 4) return;
+      soundManager.playButtonClick();
+      onStartPvPMatch('Opponent', code);
+    };
+
+    const handleLaunchOnlineDuel = () => {
+      if (!roomCode) return;
+      soundManager.playButtonClick();
+      onStartPvPMatch('Opponent', roomCode);
+    };
+
 
   const handleCopy = () => {
     navigator.clipboard?.writeText(inviteCode);
@@ -93,6 +128,68 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBack, onStartPvP
             >
               LAUNCH 2-PLAYER LOCAL DUEL
             </button>
+          </div>
+
+          {/* Online Duel Card */}
+          <div className="p-4 bg-gradient-to-br from-[#12232A] to-[#12131A] rounded-2xl border border-teal-500/40 shadow-xl shadow-teal-950/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Wifi size={16} className="text-[#2DD4BF]" />
+                <span>ONLINE DUEL</span>
+              </span>
+              <span className="text-[10px] text-[#2DD4BF] bg-teal-500/10 px-2 py-0.5 rounded-full border border-teal-500/30">
+                LIVE
+              </span>
+            </div>
+            <p className="text-[11px] font-sans text-[#C8D0E0] mb-3">
+              Open a private room and share the code, or enter a code to join a commander. Turns are
+              synchronised live over Supabase Realtime.
+            </p>
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleCreateRoom}
+                className="w-full py-2.5 px-4 rounded-xl font-mono text-xs font-bold bg-[#2DD4BF] hover:bg-teal-300 text-black shadow-lg shadow-teal-500/20 transition-all cursor-pointer"
+              >
+                CREATE PRIVATE ROOM
+              </button>
+
+              {roomCode && (
+                <div className="flex items-center justify-between p-2.5 bg-[#0E1017] rounded-xl border border-teal-500/30">
+                  <div className="flex flex-col text-left">
+                    <span className="text-[9px] text-[#4A5068] uppercase font-bold">ROOM CODE</span>
+                    <span className="font-bold text-[#2DD4BF] tracking-widest">{roomCode}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleLaunchOnlineDuel}
+                    className="px-3 py-1.5 rounded-lg bg-[#A78BFA] text-black font-bold cursor-pointer"
+                  >
+                    ENTER ROOM
+                  </button>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Enter room code..."
+                  value={joinCode}
+                  onChange={e => setJoinCode(e.target.value.toUpperCase())}
+                  className="flex-1 px-3 py-2 bg-[#0E1017] border border-[#1E2030] rounded-xl text-white outline-none focus:border-[#2DD4BF] uppercase tracking-widest"
+                />
+                <button
+                  type="button"
+                  onClick={handleJoinRoom}
+                  disabled={joinCode.trim().length < 4}
+                  className="px-3 py-2 rounded-xl bg-[#2DD4BF] text-black font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Swords size={14} />
+                  <span>JOIN</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Commander Frequency Invite Code */}
